@@ -13,6 +13,8 @@ provider:
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+  
+  role: arn:aws:iam::251132493412:role/SFProRole-default
 
 
 
