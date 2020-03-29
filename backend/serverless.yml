@@ -1,3 +1,5 @@
+org: andrewemadgabra
+app: my-first-app
 service:
   name: serverless-todo-app
 
@@ -11,6 +13,8 @@ provider:
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+
+
 
 functions:
 
@@ -26,7 +30,7 @@ functions:
           path: todos
 
   # TODO: Configure this function
-  GetTodos:
+GetTodos:
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
     events:
@@ -58,7 +62,7 @@ functions:
           method: post
           path: todos/{todoId}/attachment
 
-resources:
+Resources:
   Resources:
     # TODO: Add any necessary AWS resources
     GatewayResponseDefault4XX:
