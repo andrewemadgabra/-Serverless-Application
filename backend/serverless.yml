@@ -7,26 +7,28 @@ plugins:
   - serverless-webpack
   - serverless-iam-roles-per-function
   - serverless-reqvalidator-plugin
-  - serverless-aws-documentation  
+  - serverless-aws-documentation
 
 package:
   individually: true   
 
 provider:
   name: aws
-  runtime: nodejs8.10
-  #memorySize: 4096
-  #timeout: 10   
+  runtime: nodejs10.x 
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+
+  tracing:
+    lambda: true
+    apiGateway: true   
 
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
     USERS_TODO_TABLE: Users-Todo-${self:provider.stage}
     TODO_ID_INDEX: UserIdIndex
-    TODOS_S3_BUCKET: serverless-sing-todos-${self:provider.stage}
-    THUMBNAILS_S3_BUCKET: serverless-todos-sing-thumbnail-${self:provider.stage}
+    TODOS_S3_BUCKET: serverless-andrew-todos-${self:provider.stage}
+    THUMBNAILS_S3_BUCKET: serverless-todos-andrew-thumbnail-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
     BUCKET_REGION: ${self:provider.region}
     IS_OFFLINE: "False"
@@ -57,38 +59,21 @@ provider:
     documentation:
       api:
         info:
-          version: v1.0.0
+          version: "2"
           title: "Todo API"
           description: "Serverless application for Todo"
       models:
-        - name: TodoRequest
-          contentType: "application/json"
-          schema:
-            type: object
-            properties:
-              name:
-                type: string
-              dueDate:
-                type: string
-            required: 
-              - name
-              - dueDate                
-        - name: UpdateTodoRequest
-          contentType: "application/json"
-          schema:
-            type: object
-            properties:
-              name:
-                type: string
-              dueDate:
-                type: string
-              done:
-                type: boolean
-            required: 
-              - name
-              - dueDate
-              - done  
-    topicName: attachUrlTopic-${self:provider.stage}  
+        - 
+          name: TodoRequest
+          description: "Model for Todo Request"
+          contentType: application/json
+          schema: ${file(models/create-todo-request.json)}
+        - 
+          name: UpdateTodoRequest
+          description: "Model for Update Request"
+          contentType: application/json
+          schema: ${file(models/update-todo-request.json)}  
+    topicName: attachUrlTopic-${self:provider.stage}
 
 
 
@@ -122,17 +107,18 @@ functions:
     handler: src/lambda/http/createTodo.handler
     events:
       - http:
+          documentation:
+            summary: "Create a new todo"
+            description: "Create a new todo"
+            tags:
+              - Todo
+            requestModels:
+              "application/json": TodoRequest
           method: post
           path: todos
           authorizer: RS256Auth
           cors: true
-          documentation:
-            summary: 'Create a new todo'
-            description: 'Create a new todo'
-          requestModels:
-            'application/json': TodoRequest
-          reqValidatorName: RequestBodyValidator               
-
+          reqValidatorName: onlyBody
     iamRoleStatementsInherit: true               
     iamRoleStatements:
       - Effect: Allow
@@ -144,21 +130,23 @@ functions:
           - dynamodb:PutItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}          
 
-  # TODO: Configure this function
+  # TODO: Configure this function             
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
     events:
       - http:
-          method: patch
+          documentation:
+            summary: "Update todo"
+            description: "Update a todo item"
+            tags:
+              - UpdateTodo
+            requestModels:
+              "application/json": UpdateTodoRequest
+          method: post
           path: todos/{todoId}
           authorizer: RS256Auth
           cors: true
-          documentation:
-            summary: 'Update todo'
-            description: 'Update a todo item'
-          requestModels:
-            'application/json': UpdateTodoRequest 
-          reqValidatorName: RequestBodyValidator            
+          reqValidatorName: onlyBody           
     iamRoleStatementsInherit: true               
     iamRoleStatements:
       - Effect: Allow
@@ -205,14 +193,14 @@ functions:
     handler: src/lambda/s3/thumbnail.handler
     events:
       - sns:
-        arn:
-          Fn::Join:
-            - ':'
-            - - 'arn:aws:sns'
-              - Ref: 'AWS::Region'
-              - Ref: 'AWS::AccountId'
-              - ${self:custom.topicName
-        topicName: ${self:custom.topicName
+          arn:
+            Fn::Join:
+              - ':'
+              - - 'arn:aws:sns'
+                - Ref: 'AWS::Region'
+                - Ref: 'AWS::AccountId'
+                - ${self:custom.topicName}
+          topicName: ${self:custom.topicName}
     iamRoleStatementsInherit: true            
     iamRoleStatements:
       - Effect: Allow
@@ -225,19 +213,9 @@ functions:
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}    
            
 
-Resources:
+resources:
   Resources:
     # TODO: Add any necessary AWS resources
-
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'RequestBodyValidator'
-        RestApiId:
-          Ref: ApiGatewayRestApi
-        ValidateRequestBody: true
-        ValidateRequestParameters: false 
-
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
       Properties:
@@ -321,7 +299,15 @@ Resources:
               KeyType: HASH
             Projection:
               ProjectionType: ALL
-    
+        
+    onlyBody:  
+      Type: "AWS::ApiGateway::RequestValidator"
+      Properties:
+        Name: 'only-body'
+        RestApiId: 
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false      
 
     # AttachmentsBucket:
     #   Type: AWS::S3::Bucket
