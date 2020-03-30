@@ -7,12 +7,16 @@ plugins:
   - serverless-webpack
   - serverless-iam-roles-per-function
   - serverless-reqvalidator-plugin
-
   - serverless-aws-documentation  
+
+package:
+  individually: true   
 
 provider:
   name: aws
-  runtime: nodejs8.10
+  runtime: nodejs12.x
+  #memorySize: 4096
+  #timeout: 10   
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
@@ -58,11 +62,32 @@ provider:
           description: Serverless application for Todo
       models:
         - name: TodoRequest
-          contentType: application/json
-          schema: ${file(models/create-todo-request.json)}
+          contentType: "application/json"
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              dueDate:
+                type: string
+            required: 
+              - name
+              - dueDate                
         - name: UpdateTodoRequest
-          contentType: application/json
-          schema: ${file(models/update-todo-request.json)} 
+          contentType: "application/json"
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              dueDate:
+                type: string
+              done:
+                type: boolean
+            required: 
+              - name
+              - dueDate
+              - done  
     topicName: attachUrlTopic-${self:provider.stage}  
 
 
@@ -197,6 +222,7 @@ functions:
         Action:
           - dynamodb:UpdateItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}    
+           
 
 Resources:
   Resources:
@@ -212,14 +238,6 @@ Resources:
         RestApiId:
           Ref: ApiGatewayRestApi
 
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'request-body-validator'
-        RestApiId:
-          Ref: ApiGatewayRestApi
-        ValidateRequestBody: true
-        ValidateRequestParameters: false
 
     # TodosDynamoDBTable:
     #   Type: AWS::DynamoDB::Table
@@ -292,6 +310,15 @@ Resources:
               KeyType: HASH
             Projection:
               ProjectionType: ALL
+
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false              
 
     # AttachmentsBucket:
     #   Type: AWS::S3::Bucket
@@ -417,4 +444,5 @@ Resources:
               Resource:
                 Ref: attachUrlTopic               
         Topics:
-          - !Ref attachUrlTopic         
+          - !Ref attachUrlTopic  
+                    
