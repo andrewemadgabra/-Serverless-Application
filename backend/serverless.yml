@@ -14,7 +14,7 @@ package:
 
 provider:
   name: aws
-  runtime: nodejs12.x
+  runtime: nodejs8.10
   #memorySize: 4096
   #timeout: 10   
 
@@ -58,8 +58,8 @@ provider:
       api:
         info:
           version: v1.0.0
-          title: Todo API
-          description: Serverless application for Todo
+          title: "Todo API"
+          description: "Serverless application for Todo"
       models:
         - name: TodoRequest
           contentType: "application/json"
@@ -126,12 +126,13 @@ functions:
           path: todos
           authorizer: RS256Auth
           cors: true
-          reqValidatorName: RequestBodyValidator
           documentation:
-            summary: Create a new todo
-            description: Create a new todo
-            requestModels:
-              'application/json': TodoRequest 
+            summary: 'Create a new todo'
+            description: 'Create a new todo'
+          requestModels:
+            'application/json': TodoRequest
+          reqValidatorName: RequestBodyValidator               
+
     iamRoleStatementsInherit: true               
     iamRoleStatements:
       - Effect: Allow
@@ -152,12 +153,12 @@ functions:
           path: todos/{todoId}
           authorizer: RS256Auth
           cors: true
-          reqValidatorName: RequestBodyValidator
           documentation:
-            summary: Update todo
-            description: Update a todo item
-            requestModels:
-              'application/json': UpdateTodoRequest 
+            summary: 'Update todo'
+            description: 'Update a todo item'
+          requestModels:
+            'application/json': UpdateTodoRequest 
+          reqValidatorName: RequestBodyValidator            
     iamRoleStatementsInherit: true               
     iamRoleStatements:
       - Effect: Allow
@@ -227,6 +228,16 @@ functions:
 Resources:
   Resources:
     # TODO: Add any necessary AWS resources
+
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'RequestBodyValidator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false 
+
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
       Properties:
@@ -310,15 +321,7 @@ Resources:
               KeyType: HASH
             Projection:
               ProjectionType: ALL
-
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'request-body-validator'
-        RestApiId:
-          Ref: ApiGatewayRestApi
-        ValidateRequestBody: true
-        ValidateRequestParameters: false              
+    
 
     # AttachmentsBucket:
     #   Type: AWS::S3::Bucket
