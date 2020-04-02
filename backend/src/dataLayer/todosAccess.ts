@@ -1,14 +1,13 @@
 import * as AWS  from 'aws-sdk'
 import { DocumentClient } from 'aws-sdk/clients/dynamodb'
-var AWSXRay = require('aws-xray-sdk');
-const XAWS = AWSXRay.captureAWS(AWS)
 import { TodoItem } from '../models/TodoItem'
 import { TodoUpdate } from '../models/TodoUpdate'
 import { createLogger } from '../utils/logger'
 
+
 const logger = createLogger('Todo DataAcess')
-//import Jimp from 'jimp';
-const Jimp = require('jimp')
+import Jimp from 'jimp/es';
+
 
 export class TodoAccess {
 
@@ -27,7 +26,7 @@ export class TodoAccess {
     var params = {
       TableName: this.userTodosTable,
       ProjectionExpression: "todoId, createdAt, #name, dueDate, done, attachmentUrl",
-      FilterExpression:  "userId = :userId",
+      KeyConditionExpression:  "userId = :userId",
       ExpressionAttributeNames:{
         "#name": "name"
       },        
@@ -36,7 +35,7 @@ export class TodoAccess {
       }
     };
 
-    const result = await this.docClient.scan(params).promise();
+    const result = await this.docClient.query(params).promise();
     const items = result.Items
     logger.info('getUserTodos', items)
     return items as TodoItem[]
@@ -73,6 +72,7 @@ export class TodoAccess {
     var params = {
       TableName:this.userTodosTable,
       Key:{
+          "userId": userId,
           "todoId": todoId         
       },      
       ConditionExpression:"todoId = :todoId and userId = :userId",
@@ -88,11 +88,13 @@ export class TodoAccess {
     var params2 = {
       TableName:this.todosTable,
       Key:{
-          "todoId": todoId  
+        "userId": userId,
+        "todoId": todoId  
       },
-      ConditionExpression:"todoId = :todoId",
+      ConditionExpression:"todoId = :todoId and userId = :userId",
       ExpressionAttributeValues: {
-          ":todoId": todoId
+          ":todoId": todoId,
+          ":userId": userId
       }
     };
 
@@ -102,15 +104,29 @@ export class TodoAccess {
 
   async attachTodoUrl(uploadUrl: string, todoId: string) {
 
+    var paramsUser = {
+      TableName: this.todosTable,
+      ProjectionExpression: "userId",
+      FilterExpression:  "todoId = :todoId",        
+      ExpressionAttributeValues: {
+          ":todoId": todoId
+      }
+    };
+
+    const result = await this.docClient.scan(paramsUser).promise();
+    const items = result.Items; 
+
     const params = {
       TableName: this.todosTable,
       Key:{
-          "todoId": todoId
+        "userId": items,
+        "todoId": todoId  
       },
-      ConditionExpression:"todoId = :todoId",
+      ConditionExpression:"todoId = :todoId and userId = :userId",
       UpdateExpression: "set attachmentUrl = :r",     
       ExpressionAttributeValues:{
           ":todoId":todoId,
+          ":userId":items,
           ":r":uploadUrl
       },
     };
@@ -120,12 +136,14 @@ export class TodoAccess {
     const params2 = {
       TableName: this.userTodosTable,
       Key:{
+        "userId": items,
         "todoId": todoId
        },      
-      ConditionExpression:"todoId = :todoId",
+      ConditionExpression:"todoId = :todoId and userId = :userId",
       UpdateExpression: "set attachmentUrl = :r",     
       ExpressionAttributeValues:{
           ":todoId":todoId,
+          ":userId":items,
           ":r":uploadUrl
       },
     };
@@ -136,7 +154,7 @@ export class TodoAccess {
 
   getUploadUrl(todoId: string): string {
 
-    const s3 = new XAWS.S3({
+    const s3 = new AWS.S3({
       signatureVersion: 'v4',
       region: this.region,
       params: {Bucket: this.bucketName}
@@ -156,6 +174,7 @@ export class TodoAccess {
     const params = {
       TableName: this.userTodosTable,
       Key:{
+          "userId": userId,
           "todoId": todoId
       },
       ConditionExpression:"todoId = :todoId and userId = :userId",
@@ -180,15 +199,17 @@ export class TodoAccess {
     const params2 = {
       TableName: this.todosTable,
       Key:{
+          "userId": userId,
           "todoId": todoId
       },
-      ConditionExpression:"todoId = :todoId",
+      ConditionExpression:"todoId = :todoId and userId = :userId",
       UpdateExpression: "set #name = :r, dueDate=:p, done=:a",
       ExpressionAttributeNames:{
         "#name": "name"
       },       
       ExpressionAttributeValues:{
           ":todoId":todoId,
+          ":userId":userId,
           ":r":todo.name,
           ":p":todo.dueDate,
           ":a":todo.done
@@ -201,8 +222,8 @@ export class TodoAccess {
 
   async processTodoImage(key: string) {
 
-    console.log('Processing S3 item with key: ', key)
-    const s3 = new XAWS.S3({
+    console.log('Processing S3 item with key: ', {key})
+    const s3 = new AWS.S3({
       signatureVersion: 'v4',
       region: this.region,
       params: {Bucket: this.bucketName}
@@ -215,33 +236,33 @@ export class TodoAccess {
       })
       .promise()  
   
-    const body = response.Body
-    const image = await Jimp.read(body)
-  
-    logger.info('Buffer',image)
-  
-    image.resize(150, Jimp.AUTO)
-    const convertedBuffer = await image.getBufferAsync(Jimp.MIME_JPEG)
-  
-    logger.info('Writing image back to S3 bucket', this.thumbnailBucketName)
-    await s3
-      .putObject({
-        Bucket: this.thumbnailBucketName,
-        Key: `${key}.jpeg`,
-        Body: convertedBuffer
-      })
-      .promise()
+    const body: any = response.Body
+
+    Jimp.read(body)
+    .then(image => {
+        // Do stuff with the image.
+        return image.resize(150, Jimp.AUTO)
+    })
+    .then(resizedImage => {
+        resizedImage.getBuffer("image/jpeg", async(imageBuffer) => {
+              logger.info('Writing image back to S3 bucket', {ThumbBucket: this.thumbnailBucketName})
+              await s3
+                .putObject({
+                  Bucket: this.thumbnailBucketName,
+                  Key: `${key}.jpeg`,
+                  Body: imageBuffer
+                })
+                .promise()
+        });
+    })
+    .catch(err => {
+      // Handle an exception.
+      logger.info('Error', {Message: err})
+    });
   
   }
   }
 
 function createDynamoDBClient() {
-  if (process.env.IS_OFFLINE === "True") {    
-    return new XAWS.DynamoDB.DocumentClient({
-      region: 'localhost',
-      endpoint: 'http://localhost:8000'
-    })
-  }
-
-  return new XAWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'})
+  return new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'})
 }

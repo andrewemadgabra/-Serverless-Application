@@ -20,10 +20,6 @@ provider:
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
-
-  tracing:
-    lambda: true
-    apiGateway: true 
     
   profile: custom-profile
 
@@ -35,10 +31,11 @@ provider:
     THUMBNAILS_S3_BUCKET: serverless-todos-andrew-thumbnail-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
     BUCKET_REGION: ${self:provider.region}
-    IS_OFFLINE: "False"
 
   #role: arn:aws:iam::251132493412:role/SFProRole-default
-    
+  
+
+
   iamRoleStatements: # IAM role statements so that services can be accessed in the AWS account
     - Effect: Allow
       Action:
@@ -50,11 +47,7 @@ provider:
         - s3:PutObject
         - s3:GetObject
       Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/* 
-    - Effect: Allow
-      Action:
-        - xray:PutTraceSegments
-      Resource:
-        - '*'     
+ 
 
 custom: 
   webpack:
@@ -165,8 +158,8 @@ functions:
       - http:
           path: /todos/{todoId}
           method: delete
-          authorizer: # An AWS API Gateway custom authorizer function
-            name: RS256Auth # The name of the authorizer function (must be in this service)           
+          authorizer:
+            name: RS256Auth            
           cors: true          
     iamRoleStatementsInherit: true               
     iamRoleStatements:
@@ -186,8 +179,8 @@ functions:
       - http:
           path: /todos/{todoId}/attachment
           method: post
-          authorizer: # An AWS API Gateway custom authorizer function
-            name: RS256Auth # The name of the authorizer function (must be in this service)           
+          authorizer: 
+            name: RS256Auth           
           cors: true 
     iamRoleStatementsInherit: true 
     
@@ -196,15 +189,7 @@ functions:
     events:
       - sns:
           arn: !Ref attachUrlTopic
-          topicName: 'attachUrlTopic-${self:provider.stage}'        
-          # arn:
-          #   Fn::Join:
-          #     - ':'
-          #     - - arn:aws:sns
-          #       - Ref: AWS::Region
-          #       - Ref: AWS::AccountId
-          #       - 'attachUrlTopic-${self:provider.stage}' 
-          # topicName: 'attachUrlTopic-${self:provider.stage}'         
+          topicName: 'attachUrlTopic-${self:provider.stage}'                 
     iamRoleStatementsInherit: true               
     iamRoleStatements:
       - Effect: Allow
@@ -231,35 +216,84 @@ resources:
         RestApiId:
           Ref: ApiGatewayRestApi
 
+    # Andrew's Code
+    # TodosDynamoDBTable:
+    #   Type: AWS::DynamoDB::Table
+    #   Properties:
+    #     AttributeDefinitions:
+    #       - AttributeName: todoId
+    #         AttributeType: S
+    #       - AttributeName: userId
+    #         AttributeType: S
+    #     KeySchema:
+    #       - AttributeName: todoId
+    #         KeyType: HASH
+    #     GlobalSecondaryIndexes:
+    #       - IndexName: ${self:provider.environment.USERID_INDEX}
+    #         KeySchema:
+    #         - AttributeName: userId
+    #           KeyType: HASH
+    #         - AttributeName: todoId
+    #           KeyType: RANGE
+    #         Projection:
+    #           ProjectionType: ALL
+    #     BillingMode: PAY_PER_REQUEST
+    #     TableName: ${self:provider.environment.TODOS_TABLE}
+
     TodosDynamoDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
         TableName: ${self:provider.environment.TODOS_TABLE}
         AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S          
           - AttributeName: todoId
             AttributeType: S
         KeySchema:
+          - AttributeName: userId
+            KeyType: HASH          
           - AttributeName: todoId
-            KeyType: HASH
+            KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
+
+    # Andrew's Code
+    # AttachmentsDynamoDBTable:
+    #   Type: "AWS::DynamoDB::Table"
+    #   Properties:
+    #     AttributeDefinitions:
+    #       - AttributeName: todoId
+    #         AttributeType: S
+    #       - AttributeName: timestamp
+    #         AttributeType: S
+    #     KeySchema:
+    #       - AttributeName: todoId
+    #         KeyType: HASH
+    #       - AttributeName: timestamp
+    #         KeyType: RANGE
+    #     BillingMode: PAY_PER_REQUEST
+    #     TableName: ${self:provider.environment.ATTACHMENTS_TABLE}
 
     AttachmentsDynamoDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
         TableName: ${self:provider.environment.USERS_TODO_TABLE}
         AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S          
           - AttributeName: todoId
             AttributeType: S
         KeySchema:
-          - AttributeName: todoId
+          - AttributeName: userId
             KeyType: HASH
-        StreamSpecification:
-          StreamViewType: NEW_IMAGE
+          - AttributeName: todoId
+            KeyType: RANGE            
         GlobalSecondaryIndexes:
           - IndexName: ${self:provider.environment.TODO_ID_INDEX}
             KeySchema:
-            - AttributeName: todoId
-              KeyType: HASH
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: todoId
+                KeyType: RANGE              
             Projection:
               ProjectionType: ALL             
         BillingMode: PAY_PER_REQUEST
@@ -272,6 +306,26 @@ resources:
           Ref: ApiGatewayRestApi
         ValidateRequestBody: true
         ValidateRequestParameters: false     
+
+    #Andrew's Code
+    # AttachmentsBucket:
+    #   Type: AWS::S3::Bucket
+    #   Properties:
+    #     BucketName: ${self:provider.environment.ATTACHMENTS_S3_BUCKET}
+    #     CorsConfiguration:
+    #       CorsRules:
+    #         -
+    #           AllowedOrigins:
+    #             - '*'
+    #           AllowedHeaders:
+    #             - '*'
+    #           AllowedMethods:
+    #             - GET
+    #             - PUT
+    #             - POST
+    #             - DELETE
+    #             - HEAD
+    #           MaxAge: 3000
 
     S3BucketTodos:
       Type: AWS::S3::Bucket 
@@ -296,6 +350,21 @@ resources:
                 - DELETE
                 - HEAD
               MaxAge: 3000
+
+    # Andrew's Code                
+    # BucketPolicy:
+    #   Type: AWS::S3::BucketPolicy
+    #   Properties:
+    #     PolicyDocument:
+    #       Id: MyPolicy
+    #       Version: "2012-10-17"
+    #       Statement:
+    #         - Sid: PublicReadForGetBucketObjects
+    #           Effect: Allow
+    #           Principal: '*'
+    #           Action: 's3:GetObject'
+    #           Resource: 'arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*'
+    #     Bucket: !Ref AttachmentsBucket
 
     BucketPolicy:
       Type: AWS::S3::BucketPolicy

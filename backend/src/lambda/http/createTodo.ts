@@ -6,11 +6,15 @@ import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
 import { TodoItem } from '../../models/TodoItem'
 import { createTodo } from '../../businessLogic/todo'
 import { parseUserId } from '../../auth/utils'
-//import { createLogger } from '../../utils/logger'
+import { createLogger } from '../../utils/logger'
 import * as uuid from 'uuid'
+
+const logger = createLogger('createTodo')
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   const newTodo: CreateTodoRequest = JSON.parse(event.body)
+
+  logger.info('Event Processing', {event: event.body})
 
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
@@ -27,8 +31,10 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
                                             name: newTodo.name,
                                             dueDate: newTodo.dueDate,
                                             done: false,
-                                            attachmentUrl: null
+                                            attachmentUrl: `https://${tableName}.s3.amazonaws.com/${todoId}`
                                           }, jwtToken)
+
+  logger.info('New Item', newItem)                                          
 
   // TODO: Implement creating a new TODO item
   return {

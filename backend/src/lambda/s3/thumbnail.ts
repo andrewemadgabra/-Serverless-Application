@@ -28,13 +28,13 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
   for (const record of s3Event.Records) {
     let key = record.s3.object.key
 
-    logger.info('Image Key', key)
+    logger.info('Image Key',{key})
 
     await processImage(key)
 
     const imageUrl: string = `https://${thumbnailBucketName}.s3.${region}.amazonaws.com/${key}.jpeg`
 
-    logger.info('imageUrl', imageUrl)    
+    logger.info('imageUrl', {imageUrl})    
 
     await attachTodoUrl(imageUrl, key) 
        
