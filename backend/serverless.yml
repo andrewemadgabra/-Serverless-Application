@@ -20,34 +20,19 @@ provider:
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+
+  timeout: 10
     
   profile: custom-profile
 
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
-    USERS_TODO_TABLE: Users-Todo-${self:provider.stage}
-    TODO_ID_INDEX: UserIdIndex
-    TODOS_S3_BUCKET: serverless-andrew-todos-${self:provider.stage}
-    THUMBNAILS_S3_BUCKET: serverless-todos-andrew-thumbnail-${self:provider.stage}
-    SIGNED_URL_EXPIRATION: 300
+    ATTACHMENTS_TABLE: Attachment-Todo-${self:provider.stage}
+    USERID_INDEX: UserIdIndex
+    TODOS_S3_BUCKET: serverless-todos-andrew-todos-${self:provider.stage}
+    ATTACHMENTS_S3_BUCKET: serverless-todos-andrew-attachment-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 3000
     BUCKET_REGION: ${self:provider.region}
-
-  #role: arn:aws:iam::251132493412:role/SFProRole-default
-  
-
-
-  iamRoleStatements: # IAM role statements so that services can be accessed in the AWS account
-    - Effect: Allow
-      Action:
-        - s3:PutObject
-        - s3:GetObject
-      Resource: arn:aws:s3:::${self:provider.environment.THUMBNAILS_S3_BUCKET}/*
-    - Effect: Allow
-      Action:
-        - s3:PutObject
-        - s3:GetObject
-      Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/* 
- 
 
 custom: 
   webpack:
@@ -78,7 +63,7 @@ functions:
     handler: src/lambda/auth/auth0Authorizer.handler         
     iamRoleStatementsInherit: true
 
-  # TODO: Configure this function
+  # API For get all user's Todo Record 
   GetTodos:
     handler: src/lambda/http/getTodos.handler
     events:
@@ -86,18 +71,20 @@ functions:
           path: /todos
           method: get          
           cors: true
+          authorizer: # An AWS API Gateway custom authorizer function
+            name: RS256Auth # The name of the authorizer function (must be in this service)            
     iamRoleStatementsInherit: true                   
     iamRoleStatements:
       - Effect: Allow
         Action:
           - dynamodb:Scan
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}                
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}                
       - Effect: Allow
         Action:
           - dynamodb:Query
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}/index/${self:provider.environment.TODO_ID_INDEX}          
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ATTACHMENTS_TABLE}/index/${self:provider.environment.USERID_INDEX}          
 
-  # TODO: Configure this function
+  # API For creating User Todo Record.
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
     events:
@@ -119,12 +106,9 @@ functions:
         Action:
           - dynamodb:PutItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE} 
-      - Effect: Allow
-        Action:
-          - dynamodb:PutItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}       
+    
 
-  # TODO: Configure this function             
+  # API For Updating User Todo Record.             
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
     events:
@@ -146,12 +130,9 @@ functions:
         Action:
           - dynamodb:UpdateItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}  
-      - Effect: Allow
-        Action:
-          - dynamodb:UpdateItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}  
 
-  # TODO: Configure this function
+
+   # API For Deleting User Todo Record.
   DeleteTodo:
     handler: src/lambda/http/deleteTodo.handler
     events:
@@ -167,12 +148,9 @@ functions:
         Action:
           - dynamodb:DeleteItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}  
-      - Effect: Allow
-        Action:
-          - dynamodb:DeleteItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}           
+        
 
-  # TODO: Configure this function
+   # API For Generating Upload URL.
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
     events:
@@ -183,9 +161,15 @@ functions:
             name: RS256Auth           
           cors: true 
     iamRoleStatementsInherit: true 
-    
-  Thumbnail:           
-    handler: src/lambda/s3/thumbnail.handler
+    iamRoleStatements:    
+      - Effect: Allow
+        Action:
+          - s3:GetSignedUrl
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*     
+  
+  # API For Attaching URL to the Todo Table.  
+  AttachmentUrl:           
+    handler: src/lambda/s3/attachment.handler
     events:
       - sns:
           arn: !Ref attachUrlTopic
@@ -195,16 +179,20 @@ functions:
       - Effect: Allow
         Action:
           - dynamodb:UpdateItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}  
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE} 
       - Effect: Allow
         Action:
-          - dynamodb:UpdateItem
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}    
+          - s3:PutObject
+        Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*"    
+      - Effect: Allow
+        Action:
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*            
            
 
 resources:
   Resources:
-    # TODO: Add any necessary AWS resources
+    # AWS resources
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
       Properties:
@@ -216,34 +204,10 @@ resources:
         RestApiId:
           Ref: ApiGatewayRestApi
 
-    # Andrew's Code
-    # TodosDynamoDBTable:
-    #   Type: AWS::DynamoDB::Table
-    #   Properties:
-    #     AttributeDefinitions:
-    #       - AttributeName: todoId
-    #         AttributeType: S
-    #       - AttributeName: userId
-    #         AttributeType: S
-    #     KeySchema:
-    #       - AttributeName: todoId
-    #         KeyType: HASH
-    #     GlobalSecondaryIndexes:
-    #       - IndexName: ${self:provider.environment.USERID_INDEX}
-    #         KeySchema:
-    #         - AttributeName: userId
-    #           KeyType: HASH
-    #         - AttributeName: todoId
-    #           KeyType: RANGE
-    #         Projection:
-    #           ProjectionType: ALL
-    #     BillingMode: PAY_PER_REQUEST
-    #     TableName: ${self:provider.environment.TODOS_TABLE}
-
+    #Todos Table
     TodosDynamoDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:provider.environment.TODOS_TABLE}
         AttributeDefinitions:
           - AttributeName: userId
             AttributeType: S          
@@ -253,51 +217,33 @@ resources:
           - AttributeName: userId
             KeyType: HASH          
           - AttributeName: todoId
-            KeyType: RANGE
+            KeyType: RANGE            
         BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}
 
-    # Andrew's Code
-    # AttachmentsDynamoDBTable:
-    #   Type: "AWS::DynamoDB::Table"
-    #   Properties:
-    #     AttributeDefinitions:
-    #       - AttributeName: todoId
-    #         AttributeType: S
-    #       - AttributeName: timestamp
-    #         AttributeType: S
-    #     KeySchema:
-    #       - AttributeName: todoId
-    #         KeyType: HASH
-    #       - AttributeName: timestamp
-    #         KeyType: RANGE
-    #     BillingMode: PAY_PER_REQUEST
-    #     TableName: ${self:provider.environment.ATTACHMENTS_TABLE}
-
+    #Attachment Table used for Index searching
     AttachmentsDynamoDBTable:
       Type: AWS::DynamoDB::Table
+      DependsOn: TodosDynamoDBTable
       Properties:
-        TableName: ${self:provider.environment.USERS_TODO_TABLE}
         AttributeDefinitions:
           - AttributeName: userId
             AttributeType: S          
-          - AttributeName: todoId
-            AttributeType: S
         KeySchema:
           - AttributeName: userId
-            KeyType: HASH
-          - AttributeName: todoId
-            KeyType: RANGE            
+            KeyType: HASH           
         GlobalSecondaryIndexes:
-          - IndexName: ${self:provider.environment.TODO_ID_INDEX}
+          - IndexName: ${self:provider.environment.USERID_INDEX}
             KeySchema:
               - AttributeName: userId
-                KeyType: HASH
-              - AttributeName: todoId
-                KeyType: RANGE              
+                KeyType: HASH             
             Projection:
-              ProjectionType: ALL             
+              ProjectionType: ALL                                     
         BillingMode: PAY_PER_REQUEST
-        
+        TableName: ${self:provider.environment.ATTACHMENTS_TABLE}
+     
+    #Request Object validation, only accept exact format Request Object,
+    #Otherwise Invalid.    
     RequestBodyValidator:
       Type: AWS::ApiGateway::RequestValidator
       Properties:
@@ -307,27 +253,8 @@ resources:
         ValidateRequestBody: true
         ValidateRequestParameters: false     
 
-    #Andrew's Code
-    # AttachmentsBucket:
-    #   Type: AWS::S3::Bucket
-    #   Properties:
-    #     BucketName: ${self:provider.environment.ATTACHMENTS_S3_BUCKET}
-    #     CorsConfiguration:
-    #       CorsRules:
-    #         -
-    #           AllowedOrigins:
-    #             - '*'
-    #           AllowedHeaders:
-    #             - '*'
-    #           AllowedMethods:
-    #             - GET
-    #             - PUT
-    #             - POST
-    #             - DELETE
-    #             - HEAD
-    #           MaxAge: 3000
-
-    S3BucketTodos:
+    #Store User's uploaded images. Not for attachment. Not processed.
+    TodoBucket:
       Type: AWS::S3::Bucket 
       Properties:
         BucketName: ${self:provider.environment.TODOS_S3_BUCKET}   
@@ -351,22 +278,8 @@ resources:
                 - HEAD
               MaxAge: 3000
 
-    # Andrew's Code                
-    # BucketPolicy:
-    #   Type: AWS::S3::BucketPolicy
-    #   Properties:
-    #     PolicyDocument:
-    #       Id: MyPolicy
-    #       Version: "2012-10-17"
-    #       Statement:
-    #         - Sid: PublicReadForGetBucketObjects
-    #           Effect: Allow
-    #           Principal: '*'
-    #           Action: 's3:GetObject'
-    #           Resource: 'arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*'
-    #     Bucket: !Ref AttachmentsBucket
-
-    BucketPolicy:
+    #Policy for Todo Bucket
+    TodoBucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
         PolicyDocument:
@@ -379,23 +292,26 @@ resources:
               Action: 
                 - "s3:GetObject"
                 - "s3:PutObject"
+                - "s3:DeleteObject"
               Resource: 'arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*'
-        Bucket: !Ref S3BucketTodos 
+        Bucket: !Ref TodoBucket 
 
-    S3BucketThumbnail:
+    #Store Processed Images, which is display as Thumbnail for the Todo Item lists. 
+    AttachmentsBucket:
       Type: AWS::S3::Bucket
       Properties:
-        BucketName: ${self:provider.environment.THUMBNAILS_S3_BUCKET}
-    ThumbnailPermissionS3:
+        BucketName: ${self:provider.environment.ATTACHMENTS_S3_BUCKET}
+    AttachmentsBucketPermissionS3:
       Type: AWS::Lambda::Permission
       Properties:
-        FunctionName: !Ref  ThumbnailLambdaFunction
+        FunctionName: !Ref  AttachmentUrlLambdaFunction
         Principal: s3.amazonaws.com
         Action: lambda:InvokeFunction
         SourceAccount: !Ref AWS::AccountId
-        SourceArn: arn:aws:s3:::${self:provider.environment.THUMBNAILS_S3_BUCKET}
+        SourceArn: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}
 
-    ThumbnailBucketPolicy:
+    #Policy for Attachment Bucket        
+    AttachmentsBucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
         PolicyDocument:
@@ -408,15 +324,17 @@ resources:
               Action: 
                 - "s3:GetObject"
                 - "s3:PutObject"
-              Resource: 'arn:aws:s3:::${self:provider.environment.THUMBNAILS_S3_BUCKET}/*'
-        Bucket: !Ref S3BucketThumbnail         
-        
+              Resource: 'arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*'
+        Bucket: !Ref AttachmentsBucket         
+      
+    #SNS Topic - Will be triggered when image is upload to the Todo S3 Bucket.    
     attachUrlTopic:
       Type: AWS::SNS::Topic
       Properties:
         DisplayName: 'Attach URL topic'
         TopicName: 'attachUrlTopic-${self:provider.stage}'
 
+    #Policy for the attachURL Topic.
     attachUrlTopicPolicy:
       Type: AWS::SNS::TopicPolicy
       DependsOn:

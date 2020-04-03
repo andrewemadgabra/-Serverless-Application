@@ -11,27 +11,33 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 
   logger.info('Event Processing', {event: event.body})
 
-  // TODO: Get all TODO items for a current user
+  //Extract JWT Token From the Authoriztion Header
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
   const jwtToken = split[1] 
   
-    
+  //Get the User's Todo Item and Return the Result     
+  //const items: TodoItem[] = await getUserTodos(jwtToken) 
   const userTodoItems: TodoItem[] = await getUserTodos(jwtToken) 
 
-  
+
+
+
+  //const itemsEmpty: TodoItem[] = [] 
   let items = JSON.parse(JSON.stringify(userTodoItems))
 
   logger.info('User Todo items', items)
 
- 
+
+ // Return the all the User's Item Result back to the Client
   return {
     statusCode: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Credentials': true,
     },
     body: JSON.stringify({
-      items
+     items
     })
   }
 

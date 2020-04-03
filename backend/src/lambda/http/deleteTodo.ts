@@ -10,18 +10,21 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 
   logger.info('Event Processing', {event: event.body})
 
+  //Get the TodoId From the Query String
   const todoId = event.pathParameters.todoId
 
   
   logger.info('User Todoid', {toId: todoId})
 
+  //Extract JWT Token From the Authoriztion Header
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
   const jwtToken = split[1]
 
-
+  //Delete User's Todo Item
   await deleteUserTodos(todoId, jwtToken)
 
+  // Return the New Item Result back to the Client
   return {
     statusCode: 201,
     headers: {

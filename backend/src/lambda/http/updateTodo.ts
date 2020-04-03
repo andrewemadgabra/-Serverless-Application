@@ -12,16 +12,21 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   
   logger.info('Event Processing', {event: event.body})
 
+  //Extract JWT Token From the Authoriztion Header
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
   const jwtToken = split[1]
 
+  //Get the TodoId From the Query String
   const todoId = event.pathParameters.todoId
   const updatedTodo: UpdateTodoRequest = JSON.parse(event.body)
 
+  //Update User's Todo Item
   await updateUserTodo({name: updatedTodo.name, 
                         dueDate: updatedTodo.dueDate,
                         done: updatedTodo.done}, todoId, jwtToken)
+
+  // Return the Updated Item Result back to the Client                        
   return {
     statusCode: 201,
     headers: {

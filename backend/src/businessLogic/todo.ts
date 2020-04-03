@@ -6,11 +6,14 @@ import { TodoUpdate } from '../models/TodoUpdate'
 const todoAccess = new TodoAccess()
 
 export async function getUserTodos(jwtToken): Promise<TodoItem[]> {
+  //Extract the UserId From the jwt Token
   const userId = parseUserId(jwtToken)
+  //Return all the User's Todo Results 
   return await todoAccess.getUserTodos(userId)
 }
 
 export async function deleteUserTodos(todoId, jwtToken) {
+  //Extract the UserId From the jwt Token
   const userId = parseUserId(jwtToken)
   await todoAccess.deleteUserTodo(todoId, userId)
 }
@@ -24,13 +27,11 @@ export async function processImage(Key) {
 }
 
 export async function createTodo(
-  todo: TodoItem,
-  jwtToken: string
+  todo: TodoItem
 ): Promise<TodoItem> {
   
-  const userId = parseUserId(jwtToken)
-
-  return await todoAccess.createTodo(todo, {userId: userId})
+  //Return all the added User's Todo Results
+  return await todoAccess.createTodo(todo)
 }
 
 
@@ -40,6 +41,7 @@ export async function updateUserTodo(
   jwtToken: string,
 ){
   
+  //Extract the UserId From the jwt Token
   const userId = parseUserId(jwtToken)
 
   await todoAccess.updateUserTodo(todo,todoId,userId)
@@ -47,6 +49,7 @@ export async function updateUserTodo(
 
 export function getUploadUrl(todoId: string): string {
 
+  //Return the pre-signed Upload URL
   return todoAccess.getUploadUrl(todoId)
 
 }

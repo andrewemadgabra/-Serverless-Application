@@ -16,14 +16,19 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
 
   logger.info('Event Processing', {event: event.body})
 
+  //Extract JWT Token From the Authoriztion Header
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
   const jwtToken = split[1]
 
+
+  //Generate unique Id
   const todoId = uuid.v4()
 
+  //Extract userid from JWT token
   const userId = parseUserId(jwtToken)
 
+  //Add New Todo Item and Return the Result
   const newItem: TodoItem = await createTodo({
                                             userId,
                                             todoId,
@@ -31,12 +36,12 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
                                             name: newTodo.name,
                                             dueDate: newTodo.dueDate,
                                             done: false,
-                                            attachmentUrl: `https://${tableName}.s3.amazonaws.com/${todoId}`
-                                          }, jwtToken)
+                                            attachmentUrl: null
+                                          })
 
   logger.info('New Item', newItem)                                          
 
-  // TODO: Implement creating a new TODO item
+  // Return the New Item Result back to the Client
   return {
     statusCode: 201,
     headers: {

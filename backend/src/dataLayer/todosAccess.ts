@@ -12,21 +12,28 @@ import Jimp from 'jimp/es';
 export class TodoAccess {
 
   constructor(
+
+    //Create a DynamoDB client
     private readonly docClient: DocumentClient = createDynamoDBClient(),
-    private readonly userTodosTable = process.env.USERS_TODO_TABLE,
+
+    //Retrieve the Evironment Variables For all the Resources
     private readonly todosTable = process.env.TODOS_TABLE,
+    private readonly userIdIndex = process.env.USERID_INDEX,
     private readonly bucketName = process.env.TODOS_S3_BUCKET,
     private readonly expires = process.env.SIGNED_URL_EXPIRATION,        
-    private readonly thumbnailBucketName = process.env.THUMBNAILS_S3_BUCKET,
+    private readonly attachmentBucketName = process.env.ATTACHMENTS_S3_BUCKET,
     private readonly region = process.env.BUCKET_REGION
   ) {}
 
   async getUserTodos(userId: string): Promise<TodoItem[]> {
 
+    //KeyConditionExpression is used because We are using
+    //Query method to search for items. 
     var params = {
-      TableName: this.userTodosTable,
+      TableName: this.todosTable,
+      IndexName: this.userIdIndex,
       ProjectionExpression: "todoId, createdAt, #name, dueDate, done, attachmentUrl",
-      KeyConditionExpression:  "userId = :userId",
+      KeyConditionExpression: "userId = :userId",
       ExpressionAttributeNames:{
         "#name": "name"
       },        
@@ -35,6 +42,9 @@ export class TodoAccess {
       }
     };
 
+    //Query the Todos Records From the dynamoDb.
+    //Please note that query is used because the a Global index
+    //is applied to the Todos Table.
     const result = await this.docClient.query(params).promise();
     const items = result.Items
     logger.info('getUserTodos', items)
@@ -42,50 +52,21 @@ export class TodoAccess {
   }  
 
 
-  async createTodo(todo: TodoItem, newUser: any): Promise<TodoItem> {
+  async createTodo(todo: TodoItem): Promise<TodoItem> {
     
+    //Create a new Record and Return the Result
     await this.docClient.put({
       TableName: this.todosTable,
       Item: todo
-    }).promise()
-
-    const newUserTodoItem = {
-      userId: newUser.userId,
-      todoId: todo.todoId,      
-      createdAt: todo.createdAt,
-      name: todo.name,
-      dueDate: todo.dueDate,
-      done: todo.done,
-      attachmentUrl: todo.attachmentUrl
-    }    
-
-    await this.docClient.put({
-      TableName: this.userTodosTable,
-      Item: newUserTodoItem
-    }).promise()    
+    }).promise() 
 
     return todo
   }
 
   async deleteUserTodo(todoId: string, userId: string) {
 
+    //Parameters For deleting the User Todo'S Records.
     var params = {
-      TableName:this.userTodosTable,
-      Key:{
-          "userId": userId,
-          "todoId": todoId         
-      },      
-      ConditionExpression:"todoId = :todoId and userId = :userId",
-      ExpressionAttributeValues: {
-          ":todoId": todoId,
-          ":userId": userId
-      }
-    };
-
-    await this.docClient.delete(params).promise();
-
-
-    var params2 = {
       TableName:this.todosTable,
       Key:{
         "userId": userId,
@@ -93,21 +74,27 @@ export class TodoAccess {
       },
       ConditionExpression:"todoId = :todoId and userId = :userId",
       ExpressionAttributeValues: {
-          ":todoId": todoId,
-          ":userId": userId
+          ":userId": userId,
+          ":todoId": todoId          
       }
     };
 
-    await this.docClient.delete(params2).promise();
+    await this.docClient.delete(params).promise();
 
   }
 
   async attachTodoUrl(uploadUrl: string, todoId: string) {
 
+    //PLease Note: Very Important
+    //When the lambda attachTodoUrl function is triggered. Because it
+    //is the SNS Topic that triggers it. We are missing the UserId. 
+    //Therfore we need to some special handling for retrieving
+    //the Userid. To retrieve we used the Unique Todoid to retrieve
+    //the userId.
     var paramsUser = {
       TableName: this.todosTable,
       ProjectionExpression: "userId",
-      FilterExpression:  "todoId = :todoId",        
+      ConditionExpression:  "todoId = :todoId",        
       ExpressionAttributeValues: {
           ":todoId": todoId
       }
@@ -132,30 +119,14 @@ export class TodoAccess {
     };
 
     await this.docClient.update(params).promise();
-
-    const params2 = {
-      TableName: this.userTodosTable,
-      Key:{
-        "userId": items,
-        "todoId": todoId
-       },      
-      ConditionExpression:"todoId = :todoId and userId = :userId",
-      UpdateExpression: "set attachmentUrl = :r",     
-      ExpressionAttributeValues:{
-          ":todoId":todoId,
-          ":userId":items,
-          ":r":uploadUrl
-      },
-    };
-
-    await this.docClient.update(params2).promise();  
+ 
   }
 
 
   getUploadUrl(todoId: string): string {
 
+    //This part generates the presigned URL for the S3 Bucket.
     const s3 = new AWS.S3({
-      signatureVersion: 'v4',
       region: this.region,
       params: {Bucket: this.bucketName}
     });    
@@ -171,32 +142,8 @@ export class TodoAccess {
 
   async updateUserTodo(todo: TodoUpdate, todoId: string, userId: string) {
 
+    // Parameters setting for Updating User's Todo Item.
     const params = {
-      TableName: this.userTodosTable,
-      Key:{
-          "userId": userId,
-          "todoId": todoId
-      },
-      ConditionExpression:"todoId = :todoId and userId = :userId",
-      UpdateExpression: "set #name = :r, dueDate=:p, done=:a",
-      ExpressionAttributeNames:{
-        "#name": "name"
-      },       
-      ExpressionAttributeValues:{
-          ":todoId":todoId,
-          ":userId":userId,
-          ":r":todo.name,
-          ":p":todo.dueDate,
-          ":a":todo.done
-      },
-    };
-
-
-    await this.docClient.update(params).promise();
-
-
-
-    const params2 = {
       TableName: this.todosTable,
       Key:{
           "userId": userId,
@@ -217,18 +164,20 @@ export class TodoAccess {
     };
 
 
-    await this.docClient.update(params2).promise();
+    await this.docClient.update(params).promise();
   }
 
   async processTodoImage(key: string) {
 
-    console.log('Processing S3 item with key: ', {key})
+    logger.info('Processing S3 item with key: ', {key})
+
+    //This retrieve the image from the S3 bucket.
     const s3 = new AWS.S3({
-      signatureVersion: 'v4',
       region: this.region,
       params: {Bucket: this.bucketName}
     });  
   
+    //The image retrieve is a image Buffer.
     const response = await s3
       .getObject({
         Bucket: this.bucketName,
@@ -236,29 +185,22 @@ export class TodoAccess {
       })
       .promise()  
   
-    const body: any = response.Body
-
-    Jimp.read(body)
-    .then(image => {
-        // Do stuff with the image.
-        return image.resize(150, Jimp.AUTO)
-    })
-    .then(resizedImage => {
-        resizedImage.getBuffer("image/jpeg", async(imageBuffer) => {
-              logger.info('Writing image back to S3 bucket', {ThumbBucket: this.thumbnailBucketName})
-              await s3
-                .putObject({
-                  Bucket: this.thumbnailBucketName,
-                  Key: `${key}.jpeg`,
-                  Body: imageBuffer
-                })
-                .promise()
-        });
-    })
-    .catch(err => {
-      // Handle an exception.
-      logger.info('Error', {Message: err})
-    });
+      const body: any = response.Body
+      const image = await Jimp.read(body)
+    
+      logger.info('Buffer',{imageBuffer: image})
+    
+      image.resize(150, Jimp.AUTO)
+      const convertedBuffer = await image.getBufferAsync(Jimp.MIME_JPEG)
+    
+      logger.info('Writing image back to S3 bucket', {bucket: this.attachmentBucketName})
+      await s3
+        .putObject({
+          Bucket: this.attachmentBucketName,
+          Key: `${key}.jpeg`,
+          Body: convertedBuffer
+        })
+        .promise()
   
   }
   }
