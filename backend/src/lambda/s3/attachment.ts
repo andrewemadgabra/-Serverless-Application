@@ -5,8 +5,7 @@ import { attachTodoUrl, processImage } from '../../businessLogic/todo'
 
 const logger = createLogger('attachimageUrl')
 
-const thumbnailBucketName = process.env.THUMBNAILS_S3_BUCKET
-const region = process.env.BUCKET_REGION
+const bucketName = process.env.THUMBNAILS_S3_BUCKET
 
 export const handler: SNSHandler = async (event: SNSEvent) => {
   
@@ -32,7 +31,8 @@ export const handler: SNSHandler = async (event: SNSEvent) => {
 
     await processImage(key)
 
-    const imageUrl: string = `https://${thumbnailBucketName}.s3.${region}.amazonaws.com/${key}.jpeg`
+    const imageUrl: string = `https://${bucketName}.s3.amazonaws.com/${key}.jpeg`
+    
 
     logger.info('imageUrl', {imageUrl})    
 

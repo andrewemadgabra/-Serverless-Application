@@ -1,7 +1,8 @@
-import { CustomAuthorizerEvent, CustomAuthorizerResult } from 'aws-lambda'
+import { CustomAuthorizerHandler, CustomAuthorizerEvent, CustomAuthorizerResult } from 'aws-lambda'
 import 'source-map-support/register'
 
 import { verify, decode } from 'jsonwebtoken'
+//import { verify } from 'jsonwebtoken'
 import { createLogger } from '../../utils/logger'
 //import Axios from 'axios'
 import { Jwt } from '../../auth/Jwt'
@@ -35,16 +36,14 @@ pUu6Jvrs+FnZLlA=
 -----END CERTIFICATE-----`
 
 
-export const handler = async (
-  event: CustomAuthorizerEvent
-): Promise<CustomAuthorizerResult> => {
+export const handler: CustomAuthorizerHandler = async (event: CustomAuthorizerEvent): Promise<CustomAuthorizerResult> => {
   logger.info('Authorizing a user', event.authorizationToken)
   try {
-    const jwtToken = await verifyToken(event.authorizationToken)
-    logger.info('User was authorized', jwtToken)
+    const decodeToken = verifyToken(event.authorizationToken)
+    logger.info('User was authorized', decodeToken)
 
     return {
-      principalId: jwtToken.sub,
+      principalId: decodeToken.sub,
       policyDocument: {
         Version: '2012-10-17',
         Statement: [
@@ -57,7 +56,7 @@ export const handler = async (
       }
     }
   } catch (e) {
-    logger.error('User not authorized', { error: e.message })
+    logger.info('User not authorized', { error: e.message })
 
     return {
       principalId: 'user',
@@ -75,11 +74,12 @@ export const handler = async (
   }
 }
 
-async function verifyToken(authHeader: string): Promise<JwtPayload> {
+function verifyToken(authHeader: string): JwtPayload {
   const token = getToken(authHeader)
   const jwt: Jwt = decode(token, { complete: true }) as Jwt
 
-  logger.info('JWT', jwt)
+  logger.info('jwt token', jwt)
+
 
   // TODO: Implement token verification
   // You should implement it similarly to how it was implemented for the exercise for the lesson 5

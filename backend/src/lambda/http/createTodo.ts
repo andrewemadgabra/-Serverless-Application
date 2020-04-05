@@ -20,6 +20,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   const authorization = event.headers.Authorization
   const split = authorization.split(' ')
   const jwtToken = split[1]
+  const bucketName = process.env.THUMBNAILS_S3_BUCKET
 
 
   //Generate unique Id
@@ -29,17 +30,18 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
   const userId = parseUserId(jwtToken)
 
   //Add New Todo Item and Return the Result
-  const newItem: TodoItem = await createTodo({
+  const newTodoItems: TodoItem = await createTodo({
                                             userId,
                                             todoId,
                                             createdAt: new Date().toISOString(),
                                             name: newTodo.name,
                                             dueDate: newTodo.dueDate,
                                             done: false,
-                                            attachmentUrl: null
-                                          })
+                                            attachmentUrl: `https://${bucketName}.s3.amazonaws.com/${todoId}`
+                                      })
 
-  logger.info('New Item', newItem)                                          
+  logger.info('New Item', newTodoItems) 
+                           
 
   // Return the New Item Result back to the Client
   return {
@@ -49,7 +51,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
       'Access-Control-Allow-Credentials': true
     },
     body: JSON.stringify({
-      item: newItem
+      item: newTodoItems
     })
   }
 }
