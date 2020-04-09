@@ -1,15 +1,15 @@
-org: andrewemadgabra
-app: my-first-app
+# org: andrewemadgabra
+# app: my-first-app
 
 service:
   name: serverless-todo-app
+  
 
 plugins:
   - serverless-webpack
   - serverless-reqvalidator-plugin
   - serverless-aws-documentation
   - serverless-iam-roles-per-function
-  
 
 package:
   individually: true   
@@ -19,18 +19,19 @@ provider:
   runtime: nodejs12.x 
 
   stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
-    
-  profile: custom-profile
+  region: ${opt:region, 'us-east-2'}
+
+  # profile: projectDev
 
   environment:
-    TODOS_TABLE: "Todos-${self:provider.stage}"
+    TODOS_TABLE: Todos-${self:provider.stage}
     USERS_TODO_TABLE: "Users-Todo-${self:provider.stage}"
     USERID_INDEX: UserIdIndex
-    TODOS_S3_BUCKET: "serverless-andrew-todos-${self:provider.stage}"
-    THUMBNAILS_S3_BUCKET: "serverless-todos-andrew-thumbnail-${self:provider.stage}"
+    TODOS_S3_BUCKET: "serverless-udacity-todos-${self:provider.stage}"
+    THUMBNAILS_S3_BUCKET: "serverless-todos-udacity-thumbnail-${self:provider.stage}"
     SIGNED_URL_EXPIRATION: 300
     BUCKET_REGION: ${self:provider.region}
+
 
 custom: 
   webpack:
@@ -75,12 +76,13 @@ functions:
     iamRoleStatements:
       - Effect: Allow
         Action:
-          - dynamodb:Scan
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODO_TABLE}"                
+          - dynamodb:Query
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"
       - Effect: Allow
         Action:
           - dynamodb:Query
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODO_TABLE}/index/${self:provider.environment.USERID_INDEX}"     
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}/index/${self:provider.environment.USERID_INDEX}"     
+
 
   # TODO: Configure this function
   CreateTodo:
@@ -98,15 +100,15 @@ functions:
             description: Create a new todo
             requestModels:
               'application/json': TodoRequest                
-    iamRoleStatements:
+    iamRoleStatements:   
       - Effect: Allow
         Action:
           - dynamodb:PutItem
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}"
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}       
       - Effect: Allow
         Action:
           - dynamodb:PutItem
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"       
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"     
 
   # TODO: Configure this function             
   UpdateTodo:
@@ -124,15 +126,17 @@ functions:
             description: Update a todo item
             requestModels:
               'application/json': UpdateTodoRequest                
-    iamRoleStatements:
+    iamRoleStatements:      
       - Effect: Allow
         Action:
           - dynamodb:UpdateItem
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}"  
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}       
       - Effect: Allow
         Action:
           - dynamodb:UpdateItem
         Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"  
+
 
   # TODO: Configure this function
   DeleteTodo:
@@ -144,15 +148,16 @@ functions:
           authorizer: # An AWS API Gateway custom authorizer function
             name: RS256Auth # The name of the authorizer function (must be in this service)           
           cors: true                        
-    iamRoleStatements:
+    iamRoleStatements:      
       - Effect: Allow
         Action:
           - dynamodb:DeleteItem
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}"  
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}      
       - Effect: Allow
         Action:
           - dynamodb:DeleteItem
-        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"           
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"          
 
   # TODO: Configure this function
   GenerateUploadUrl:
@@ -187,7 +192,16 @@ functions:
         Action:
           - s3:PutObject
           - s3:GetObject
-        Resource: "arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*"      
+        Resource: "arn:aws:s3:::${self:provider.environment.TODOS_S3_BUCKET}/*"          
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}       
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TODO_TABLE}"              
 
            
 
@@ -204,22 +218,20 @@ resources:
         ResponseType: DEFAULT_4XX
         RestApiId:
           Ref: ApiGatewayRestApi
+      
+
 
     TodosDynamoDBTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:provider.environment.TODOS_TABLE}
         AttributeDefinitions:
-          - AttributeName: userId
-            AttributeType: S          
           - AttributeName: todoId
-            AttributeType: S
+            AttributeType: S            
         KeySchema:
-          - AttributeName: userId
-            KeyType: HASH          
           - AttributeName: todoId
-            KeyType: RANGE 
+            KeyType: HASH            
         BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}          
 
     AttachmentsDynamoDBTable:
       Type: AWS::DynamoDB::Table
@@ -228,9 +240,13 @@ resources:
         AttributeDefinitions:
           - AttributeName: userId
             AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S            
         KeySchema:
           - AttributeName: userId
             KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE            
         StreamSpecification:
           StreamViewType: NEW_IMAGE
         GlobalSecondaryIndexes:
@@ -239,8 +255,8 @@ resources:
             - AttributeName: userId
               KeyType: HASH
             Projection:
-              ProjectionType: ALL             
-        BillingMode: PAY_PER_REQUEST
+              ProjectionType: ALL 
+        BillingMode: PAY_PER_REQUEST                          
         
     RequestBodyValidator:
       Type: AWS::ApiGateway::RequestValidator
@@ -343,4 +359,4 @@ resources:
               Resource:
                 Ref: attachUrlTopic               
         Topics:
-          - !Ref attachUrlTopic  
+          - !Ref attachUrlTopic
